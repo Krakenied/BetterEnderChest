@@ -1,16 +1,18 @@
 package nl.rutgerkok.betterenderchest;
 
-import java.util.Arrays;
+import java.io.ByteArrayOutputStream;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.commons.lang.Validate;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.io.BukkitObjectOutputStream;
 
 import com.google.common.base.Preconditions;
 
@@ -41,7 +43,7 @@ public class BetterEnderInventoryHolder implements InventoryHolder {
      * the items currently in the chest is different, we need to save those items to
      * the database.
      */
-    private int savedItemsHashCode = 0;
+    private String savedItemsChecksum = null;
     private final ChestRestrictions chestRestrictions;
     private final ReentrantLock saveLock;
     private final WorldGroup worldGroup;
@@ -162,11 +164,24 @@ public class BetterEnderInventoryHolder implements InventoryHolder {
      * @return Whether there are unsaved changes in this chest.
      */
     public boolean hasUnsavedChanges(ItemStack[] currentContents) {
-        return Arrays.hashCode(currentContents) != this.savedItemsHashCode;
+        return !this.computeChecksum(currentContents).equals(this.savedItemsChecksum);
     }
 
     public void markContentsAsSaved(ItemStack[] contents) {
-        this.savedItemsHashCode = Arrays.hashCode(contents);
+        this.savedItemsChecksum = this.computeChecksum(contents);
+    }
+
+    private String computeChecksum(ItemStack[] contents) throws IllegalStateException {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+             BukkitObjectOutputStream dataOutput = new BukkitObjectOutputStream(outputStream)) {
+            dataOutput.write(contents.length);
+            for (ItemStack content : contents) {
+                dataOutput.writeObject(content);
+            }
+            return DigestUtils.sha1Hex(outputStream.toByteArray());
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to compute SHA-1 checksum", e);
+        }
     }
 
 }
